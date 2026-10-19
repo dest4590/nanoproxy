@@ -1,0 +1,5 @@
+[target.armv7-unknown-linux-musleabi]
+linker = "arm-linux-gnueabi-gcc"
+
+[unstable]
+build-std = ["std", "panic_abort"]
