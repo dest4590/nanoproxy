@@ -188,18 +188,109 @@ rustup component add rust-src --toolchain nightly
 # Binary: target/x86_64-unknown-linux-musl/release/nanoproxy (~70 KB)
 ```
 
-### Cross-compilation for routers (ARMv7 musl soft-float)
+### Cross-Compilation for Router Architectures
+
+Consumer routers and embedded boards run diverse CPU architectures, often without hardware floating point units (FPUs) or standard glibc runtime. Below are configurations for common router targets.
+
+All targets can be linked statically using `.cargo/config.toml` and compressed with `./build.sh <target>`.
+
+#### Architecture Matrix
+
+| Target Triple | CPU Architecture | Common Devices / Platforms | Toolchain / Linker |
+| ------------- | ---------------- | -------------------------- | ------------------ |
+| `armv7-unknown-linux-musleabi` | ARMv7 (32-bit Soft-Float) | Xiaomi BE5000 (RD18), MT7981, IPQ40xx, OpenWrt ARM | `gcc-arm-linux-gnueabi` |
+| `mipsel-unknown-linux-musl` | MIPS32r2 (Little-Endian, Soft-Float) | Mi Router 3 / 3G / Mini, MT7620, MT7621, Padavan, Entware | `mipsel-linux-muslsf-cross` |
+| `aarch64-unknown-linux-musl` | ARM64 / AArch64 | Raspberry Pi 4/5, NanoPi, RK3568, Filogic 830 (64-bit) | `gcc-aarch64-linux-gnu` |
+| `x86_64-unknown-linux-musl` | x86_64 | x86 mini-PCs, Proxmox, pfSense/OPNsense x86 VM | `musl-tools` (`musl-gcc`) |
+
+---
+
+#### 1. ARMv7 Musl Soft-Float (`armv7-unknown-linux-musleabi`)
+
+Many modern budget routers (e.g. MediaTek Filogic MT7981 / Cortex-A53 running in 32-bit mode) use a soft-float musl userspace (`/lib/ld-musl-arm.so.1`).
+Compiling with standard hard-float toolchains (`armhf`) causes `Illegal instruction` (SIGILL / exit 132).
 
 ```bash
-# Install cross toolchain (Debian/Ubuntu)
-apt install gcc-arm-linux-gnueabi
+# Install cross-compiler
+apt install -y gcc-arm-linux-gnueabi
 
-# Add the Rust target
+# Add Rust target
 rustup target add armv7-unknown-linux-musleabi --toolchain nightly
 
-# Build
+# Build packed binary (~70 KB)
 ./build.sh armv7-unknown-linux-musleabi
-# Binary: target/armv7-unknown-linux-musleabi/release/nanoproxy
+# Output: target/armv7-unknown-linux-musleabi/release/nanoproxy
 ```
 
-The cross-linker is pre-configured in `.cargo/config.toml`.
+---
+
+#### 2. MIPS Little-Endian Soft-Float (`mipsel-unknown-linux-musl`)
+
+Routers based on MediaTek MT7620/MT7621 running Padavan, OpenWrt, or Entware require MIPS32r2 little-endian binaries. These chips lack hardware FPUs, so soft-float musl (`muslsf`) is strictly required.
+
+Because upstream Rust's musl target links dynamic CRT stubs or expects hard-float by default, link statically with a muslsf cross-toolchain (e.g. built via `musl-cross-make`):
+
+```bash
+# Add Rust target
+rustup target add mipsel-unknown-linux-musl --toolchain nightly
+
+# Build packed binary (~190 KB)
+./build.sh mipsel-unknown-linux-musl
+# Output: target/mipsel-unknown-linux-musl/release/nanoproxy
+```
+
+The linker wrapper (`mipsel-gcc-wrapper`) in `.cargo/config.toml` passes `-static -no-pie` and explicitly pulls `libc.a` and `libgcc.a` to guarantee a 100% self-contained binary that runs even in read-only MTD partitions.
+
+---
+
+#### 3. ARM64 / AArch64 (`aarch64-unknown-linux-musl`)
+
+For modern 64-bit ARM boards and routers:
+
+```bash
+# Install cross-compiler
+apt install -y gcc-aarch64-linux-gnu
+
+# Add Rust target
+rustup target add aarch64-unknown-linux-musl --toolchain nightly
+
+# Build
+./build.sh aarch64-unknown-linux-musl
+# Output: target/aarch64-unknown-linux-musl/release/nanoproxy
+```
+
+---
+
+#### 4. x86_64 Musl (`x86_64-unknown-linux-musl`)
+
+For x86 routers and Linux servers:
+
+```bash
+# Install musl tools
+apt install -y musl-tools
+
+# Add Rust target
+rustup target add x86_64-unknown-linux-musl --toolchain nightly
+
+# Build
+./build.sh x86_64-unknown-linux-musl
+# Output: target/x86_64-unknown-linux-musl/release/nanoproxy
+```
+
+### `.cargo/config.toml` Reference
+
+Cross-linkers are configured in `.cargo/config.toml`:
+
+```toml
+[target.armv7-unknown-linux-musleabi]
+linker = "arm-linux-gnueabi-gcc"
+
+[target.aarch64-unknown-linux-musl]
+linker = "aarch64-linux-gnu-gcc"
+
+[target.mipsel-unknown-linux-musl]
+linker = "/opt/mipsel-linux-muslsf-cross/bin/mipsel-gcc-wrapper"
+
+[unstable]
+build-std = ["std", "panic_abort"]
+```

@@ -1,5 +1,11 @@
 [target.armv7-unknown-linux-musleabi]
 linker = "arm-linux-gnueabi-gcc"
 
+[target.aarch64-unknown-linux-musl]
+linker = "aarch64-linux-gnu-gcc"
+
+[target.mipsel-unknown-linux-musl]
+linker = "/opt/mipsel-linux-muslsf-cross/bin/mipsel-gcc-wrapper"
+
 [unstable]
 build-std = ["std", "panic_abort"]
